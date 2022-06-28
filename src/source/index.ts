@@ -1,12 +1,13 @@
-import type { AppInterface } from '@micro-app/types'
+import type { AppInterface, sourceScriptInfo } from '@micro-app/types'
 import {
   logError,
   CompletionPath,
   pureCreateElement,
 } from '../libs/utils'
 import { extractLinkFromHtml, fetchLinksFromHtml } from './links'
-import { extractScriptElement, fetchScriptsFromHtml, checkExcludeUrl, checkIgnoreUrl } from './scripts'
+import { extractScriptElement, fetchScriptSuccess, checkExcludeUrl, checkIgnoreUrl } from './scripts'
 import scopedCSS from './scoped_css'
+import { ScriptLoader } from './loader/script'
 
 /**
  * transform html string to dom
@@ -87,7 +88,11 @@ export function extractSourceDom (htmlStr: string, app: AppInterface) {
   }
 
   if (app.source.scripts.size) {
-    fetchScriptsFromHtml(wrapElement, app)
+    ScriptLoader.getInstance().run(app, (url: string, info:sourceScriptInfo, data: string) => {
+      fetchScriptSuccess(url, info, data)
+    }, () => {
+      app.onLoad(wrapElement)
+    })
   } else {
     app.onLoad(wrapElement)
   }

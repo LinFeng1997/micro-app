@@ -148,47 +148,6 @@ export function checkIgnoreUrl (url: string | null, appName: string): boolean {
 }
 
 /**
- *  Get remote resources of script
- * @param wrapElement htmlDom
- * @param app app
- */
-export function fetchScriptsFromHtml (
-  wrapElement: HTMLElement,
-  app: AppInterface,
-): void {
-  const scriptEntries: Array<[string, sourceScriptInfo]> = Array.from(app.source.scripts.entries())
-  const fetchScriptPromise: Promise<string>[] = []
-  const fetchScriptPromiseInfo: Array<[string, sourceScriptInfo]> = []
-  for (const [url, info] of scriptEntries) {
-    if (info.isExternal) {
-      const globalScriptText = globalScripts.get(url)
-      if (globalScriptText) {
-        info.code = globalScriptText
-      } else if ((!info.defer && !info.async) || app.isPrefetch) {
-        fetchScriptPromise.push(fetchSource(url, app.name))
-        fetchScriptPromiseInfo.push([url, info])
-      }
-    }
-  }
-
-  if (fetchScriptPromise.length) {
-    promiseStream<string>(fetchScriptPromise, (res: {data: string, index: number}) => {
-      fetchScriptSuccess(
-        fetchScriptPromiseInfo[res.index][0],
-        fetchScriptPromiseInfo[res.index][1],
-        res.data,
-      )
-    }, (err: {error: Error, index: number}) => {
-      logError(err, app.name)
-    }, () => {
-      app.onLoad(wrapElement)
-    })
-  } else {
-    app.onLoad(wrapElement)
-  }
-}
-
-/**
  * fetch js succeeded, record the code value
  * @param url script address
  * @param info resource script info
