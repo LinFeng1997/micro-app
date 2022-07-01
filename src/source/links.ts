@@ -1,3 +1,4 @@
+// source/link.ts
 import type {
   AppInterface,
   sourceLinkInfo,
@@ -5,7 +6,6 @@ import type {
 import { fetchSource } from './fetch'
 import {
   CompletionPath,
-  promiseStream,
   pureCreateElement,
   defer,
   logError,
@@ -19,90 +19,113 @@ import {
 // Global links, reuse across apps
 export const globalLinks = new Map<string, string>()
 
-/**
- * Extract link elements
- * @param link link element
- * @param parent parent element of link
- * @param app app
- * @param microAppHead micro-app-head element
- * @param isDynamic dynamic insert
- */
-export function extractLinkFromHtml (
-  link: HTMLLinkElement,
-  parent: Node,
-  app: AppInterface,
-  isDynamic = false,
-): any {
-  const rel = link.getAttribute('rel')
-  let href = link.getAttribute('href')
-  let replaceComment: Comment | null = null
-  if (rel === 'stylesheet' && href) {
-    href = CompletionPath(href, app.url)
-    if (!isDynamic) {
+export class LinkParser {
+  private static instance: LinkParser;
+  public static getInstance (): LinkParser {
+    if (!this.instance) {
+      this.instance = new LinkParser()
+    }
+    return this.instance
+  }
+
+  public static formatDynamicLink = formatDynamicLink;
+  public static fetchLinkSuccess = fetchLinkSuccess;
+
+  /**
+   * Extract link elements
+   * @param link link element
+   * @param parent parent element of link
+   * @param app app
+   * @param microAppHead micro-app-head element
+   * @param isDynamic dynamic insert
+   */
+  public extractLinkFromHtml (
+    link: HTMLLinkElement,
+    parent: Node,
+    app: AppInterface,
+  ): any {
+    let { rel, href } = this.getLinkAttr(link)
+
+    let replaceComment: Comment | null = null
+    if (this.isStylesheet(rel) && href) {
+      href = CompletionPath(href, app.url)
       replaceComment = document.createComment(`link element with href=${href} move to micro-app-head as style element`)
       app.source.links.set(href, {
         code: '',
         placeholder: replaceComment,
         isGlobal: link.hasAttribute('global'),
       })
-    } else {
+    } else if (this.isOtherRel(rel)) {
+      parent.removeChild(link)
+    } else if (href) {
+      // dns-prefetch preconnect modulepreload search ....
+      link.setAttribute('href', CompletionPath(href, app.url))
+    }
+
+    if (replaceComment) {
+      return parent.replaceChild(replaceComment, link)
+    }
+  }
+
+  /**
+   * Extract dynamic link elements
+   * @param link link element
+   * @param url link url
+   */
+  public extractDynamicLinkFromHtml (
+    link: HTMLLinkElement,
+    url: string,
+  ): any {
+    const { rel, href } = this.getLinkAttr(link)
+    const dynamicLink = {
+      url: '',
+    }
+
+    if (!href) {
+      return dynamicLink
+    }
+
+    let replaceComment: Comment | null = null
+    if (this.isStylesheet(rel)) {
       return {
-        url: href,
+        url: CompletionPath(href, url),
         info: {
           code: '',
-          isGlobal: link.hasAttribute('global'),
-        }
+          isGlobal: this.linkIsGlobal(link),
+        },
       }
-    }
-  } else if (rel && ['prefetch', 'preload', 'prerender', 'icon', 'apple-touch-icon'].includes(rel)) {
-    // preload prefetch icon ....
-    if (isDynamic) {
+    } else if (this.isOtherRel(rel)) {
       replaceComment = document.createComment(`link element with rel=${rel}${href ? ' & href=' + href : ''} removed by micro-app`)
-    } else {
-      parent.removeChild(link)
+    } else if (href) {
+      // dns-prefetch preconnect modulepreload search ....
+      link.setAttribute('href', CompletionPath(href, url))
     }
-  } else if (href) {
-    // dns-prefetch preconnect modulepreload search ....
-    link.setAttribute('href', CompletionPath(href, app.url))
-  }
 
-  if (isDynamic) {
     return { replaceComment }
-  } else if (replaceComment) {
-    return parent.replaceChild(replaceComment, link)
   }
-}
 
-/**
- * Get link remote resources
- * @param wrapElement htmlDom
- * @param app app
- * @param microAppHead micro-app-head
- */
-export function fetchLinksFromHtml (
-  wrapElement: HTMLElement,
-  app: AppInterface,
-  microAppHead: Element,
-): void {
-  const linkEntries: Array<[string, sourceLinkInfo]> = Array.from(app.source.links.entries())
+  private getLinkAttr (link: HTMLLinkElement) {
+    const rel = link.getAttribute('rel')
+    const href = link.getAttribute('href')
 
-  const fetchLinkPromise: Array<Promise<string>|string> = linkEntries.map(([url]) => {
-    return globalLinks.has(url) ? globalLinks.get(url)! : fetchSource(url, app.name)
-  })
+    return {
+      rel,
+      href,
+    }
+  }
 
-  promiseStream<string>(fetchLinkPromise, (res: {data: string, index: number}) => {
-    fetchLinkSuccess(
-      linkEntries[res.index][0],
-      linkEntries[res.index][1],
-      res.data,
-      microAppHead,
-      app,
-    )
-  }, (err: {error: Error, index: number}) => {
-    logError(err, app.name)
-  }, () => {
-    app.onLoad(wrapElement)
-  })
+  private isStylesheet (rel: string | null) {
+    return rel === 'stylesheet'
+  }
+
+  private linkIsGlobal (link: HTMLLinkElement) {
+    return link.hasAttribute('global')
+  }
+
+  private isOtherRel (rel: string | null) {
+    // preload prefetch icon ....
+    return rel && ['prefetch', 'preload', 'prerender', 'icon', 'apple-touch-icon'].includes(rel)
+  }
 }
 
 /**

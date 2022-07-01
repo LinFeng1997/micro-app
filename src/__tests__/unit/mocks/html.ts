@@ -10,6 +10,7 @@ export const MOCK_BASIC_HTML = `
       background: #f5f5f5;
     }
   </style>
+  <link rel="stylesheet" href="/link.css" />
 </head>
 <body>
   <div id="root"></div>
@@ -33,6 +34,7 @@ export const MOCK_APP_HTML = `
       background: #f5f5f5;
     }
   </style>
+  <link rel="stylesheet" href="/link.css" />
 </micro-app-head>
 <micro-app-body>
   <div id="root"></div>
